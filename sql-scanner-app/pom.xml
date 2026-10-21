@@ -1,0 +1,131 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>dev.graphnous</groupId>
+        <artifactId>graphnous-sql-scanner</artifactId>
+        <version>1.0-SNAPSHOT</version>
+        <relativePath>../pom.xml</relativePath>
+    </parent>
+
+    <!--
+        The SQL scanner that runs in the sandbox, packaged as a runnable jar.
+        It takes the repository path, target path, output file and optionally
+        the dialect of the target (see dev.graphnous.scanner.sql.Main).
+    -->
+    <artifactId>sql-scanner-app</artifactId>
+
+    <properties>
+        <scan-result.schema.directory>${project.build.directory}/scan-result-schema</scan-result.schema.directory>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <!-- Parses the statements -->
+            <groupId>com.github.jsqlparser</groupId>
+            <artifactId>jsqlparser</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <!-- Released as sql-scanner.jar, the name the server and the CLI expect -->
+        <finalName>sql-scanner</finalName>
+
+        <plugins>
+            <plugin>
+                <!-- Downloads the schema at graphnous.schema.url, before the model is generated from it -->
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>download-scan-result-schema</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <mkdir dir="${scan-result.schema.directory}"/>
+                                <get src="${graphnous.schema.url}"
+                                     dest="${scan-result.schema.directory}/scan-result.schema.json"
+                                     retries="3"
+                                     usetimestamp="false"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <!-- The scan result model, from the downloaded schema -->
+                <groupId>org.jsonschema2pojo</groupId>
+                <artifactId>jsonschema2pojo-maven-plugin</artifactId>
+                <configuration>
+                    <sourceDirectory>${scan-result.schema.directory}</sourceDirectory>
+                    <targetPackage>dev.graphnous.scanner.sql.model</targetPackage>
+                    <outputDirectory>${project.build.directory}/generated-sources/jsonschema2pojo</outputDirectory>
+                    <sourceType>jsonschema</sourceType>
+
+                    <includeHashcodeAndEquals>true</includeHashcodeAndEquals>
+                    <includeToString>true</includeToString>
+                    <includeJsr303Annotations>false</includeJsr303Annotations>
+
+                    <usePrimitives>false</usePrimitives>
+                    <initializeCollections>true</initializeCollections>
+                    <!-- A SQL file has no classes, an ALTER TABLE no columns: leaves out what is empty -->
+                    <inclusionLevel>NON_EMPTY</inclusionLevel>
+
+                    <includeConstructors>false</includeConstructors>
+                    <generateBuilders>false</generateBuilders>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>generate-scan-result-model</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <createDependencyReducedPom>false</createDependencyReducedPom>
+                            <filters>
+                                <filter>
+                                    <artifact>*:*</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/*.SF</exclude>
+                                        <exclude>META-INF/*.DSA</exclude>
+                                        <exclude>META-INF/*.RSA</exclude>
+                                        <exclude>META-INF/MANIFEST.MF</exclude>
+                                        <exclude>module-info.class</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                            <transformers>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer"/>
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>dev.graphnous.scanner.sql.Main</mainClass>
+                                </transformer>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
